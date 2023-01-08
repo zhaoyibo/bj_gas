@@ -13,7 +13,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(minutes=10)
+UPDATE_INTERVAL = timedelta(minutes=720)
 
 
 async def async_setup(hass: HomeAssistant, hass_config):
