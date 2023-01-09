@@ -4,10 +4,10 @@ import json
 import asyncio
 from .util.sm3 import sm3
 from urllib.parse import quote
+from pyDes import des, CBC, PAD_PKCS5
+import base64
 
 _LOGGER = logging.getLogger(__name__)
-
-ENC_DEC_URL = "http://tool.chacuo.net/cryptdes"
 
 WXMP_GAS_URL = "https://zt.bjgas.com:6443/wxmpgas/wxmp?data="
 
@@ -34,6 +34,7 @@ class GASData:
         self._wxsign = wxsign
         self._user_code = user_code
         self._info = {}
+        self._des = des(b"424A4741", mode=CBC, IV=b'4D505758', pad=None, padmode=PAD_PKCS5)
 
     def common_headers(self):
         headers = {
@@ -54,49 +55,20 @@ class GASData:
         return req_type + "|" + self._user_code + "|" + USER_TYPE + "|" + str(
             round(time.time() * 1000)) + "|" + WXMP_APP_ID + "|"
 
-    def encdec_headers(self):
-        headers = {
-            "Accept": "*/*",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Connection": "keep-alive",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "Cookie": "__yjs_duid=1_98095ed0f039ff0d890013e33d1032e21673180202885; yjs_js_security_passport=ee306caa71f15b7b70cd3f9639d1639d1b4c2c41_1673180206_js",
-            "Dnt": "1",
-            "Origin": "http://tool.chacuo.net",
-            "Referer": "http://tool.chacuo.net/cryptdes",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-            "X-Requested-With": "XMLHttpRequest",
-            "Accept-Encoding": "gzip",
-        }
-        return headers
+    def des_enc(self, text):
+        d = self._des.encrypt(text.encode('utf-8'))
+        return base64.b64encode(d).decode('utf-8')
 
-    async def encdec(self, data, dec=1):
-        headers = self.encdec_headers()
+    def des_dec(self, text):
+        d = base64.b64decode(text)
+        return self._des.decrypt(d).decode('utf-8')
 
-        json_data = {
-            "data": f"{data}",
-            "type": "des",
-            "arg": f"m=cbc_pad=pkcs7_p=424A47415347464350554B414249414F_i=4D505758_o=0_s=utf-8_t={dec}",
-        }
-
-        r = await self._session.post("http://tool.chacuo.net/cryptdes", headers=headers, data=json_data, timeout=10)
-        if r.status == 200:
-            ret = await r.read()
-            _LOGGER.warning("encdec ret:%s", ret)
-            result = json.loads(ret)
-            if result["status"] == 1:
-                return result['data'][0]
-            else:
-                raise InvalidData(f"encdec error: {result}")
-        else:
-            raise InvalidData(f"encdec response status_code = {r.status}")
-
-    async def async_get_week(self, user_code):
+    async def async_get_info(self, user_code):
         headers = self.common_headers()
 
         original_data = self.data_concat(REQ_INFO)
         _LOGGER.warning("original_data:%s", original_data)
-        encrypt_data = await self.encdec(original_data, 0)
+        encrypt_data = self.des_enc(original_data)
         _LOGGER.warning("encrypt_data:%s", encrypt_data)
         tocken = sm3(encrypt_data).lower()
         _LOGGER.warning("tocken:%s", tocken)
@@ -104,14 +76,17 @@ class GASData:
 
         urlencode_data = quote(encrypt_data)
         _LOGGER.warning("urlencode_data:%s", urlencode_data)
-        r = await self._session.post(WXMP_GAS_URL + urlencode_data, headers=headers, data={"data": urlencode_data},
+        r = await self._session.post(WXMP_GAS_URL + urlencode_data,
+                                     headers=headers,
+                                     data={"data": urlencode_data},
                                      timeout=10)
         if r.status == 200:
             ret = await r.read()
             _LOGGER.warning("gas ret:%s", ret)
             result = json.loads(ret)
             encrypt_response = result[0]['data']
-            decrypt_data = await self.encdec(encrypt_response, 1)
+            decrypt_data = self.des_dec(encrypt_response)
+            _LOGGER.warning("gas ret decrypt_data:%s", decrypt_data)
             data_arr = decrypt_data.split('|')
             if data_arr[0] == '0001':
                 self._info[user_code]["month_reg_qty"] = float(data_arr[3])
@@ -133,7 +108,7 @@ class GASData:
     async def async_get_data(self):
         self._info = {self._user_code: {}}
         tasks = [
-            self.async_get_week(self._user_code),
+            self.async_get_info(self._user_code),
         ]
         await asyncio.wait(tasks)
         _LOGGER.debug(f"Data {self._info}")

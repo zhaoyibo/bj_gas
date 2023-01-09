@@ -5,7 +5,7 @@
   "documentation": "https://github.com/zhaoyibo/bj_gas",
   "issue_tracker": "https://github.com/zhaoyibo/bj_gas/issues",
   "iot_class": "cloud_polling",
-  "requirements": [],
+  "requirements": ["pyDes==2.0.1"],
   "dependencies": [],
   "codeowners": ["@zhaoyibo"]
 }
