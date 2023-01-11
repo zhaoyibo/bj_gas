@@ -58,10 +58,10 @@ async def async_setup_platform(hass, config, async_add_devices, discovery_info=N
         for key in GAS_SENSORS.keys():
             if key in data.keys():
                 sensors.append(GASSensor(coordinator, user_code, key))
-        # for month in range(len(data["monthly_bills"])):
-        #     sensors.append(GASHistorySensor(coordinator, user_code, month))
-        # for day in range(len(data["daily_bills"])):
-        #     sensors.append(GASDailyBillSensor(coordinator, user_code, day))
+        for month in range(len(data["monthly_bills"])):
+            sensors.append(GASHistorySensor(coordinator, user_code, month))
+        for day in range(len(data["daily_bills"])):
+            sensors.append(GASDailyBillSensor(coordinator, user_code, day))
     async_add_devices(sensors, True)
 
 

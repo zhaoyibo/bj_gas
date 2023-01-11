@@ -102,6 +102,85 @@ class GASData:
                     self._info[user_code]["current_level"] = 2
                     self._info[user_code]["current_level_remain"] = float(data_arr[18])
                 self._info[user_code]["year_consume"] = float(data_arr[19])
+            else:
+                raise InvalidData(f"async_get_info response decrypt_data = {decrypt_data}")
+        else:
+            raise InvalidData(f"async_get_info response status_code = {r.status}")
+
+    async def async_get_mon(self, user_code):
+        headers = self.common_headers()
+
+        original_data = self.data_concat(REQ_DEC)
+        _LOGGER.warning("original_data:%s", original_data)
+        encrypt_data = self.des_enc(original_data)
+        _LOGGER.warning("encrypt_data:%s", encrypt_data)
+        tocken = sm3(encrypt_data).lower()
+        _LOGGER.warning("tocken:%s", tocken)
+        headers["Tocken"] = tocken
+
+        urlencode_data = quote(encrypt_data)
+        _LOGGER.warning("urlencode_data:%s", urlencode_data)
+        r = await self._session.post(WXMP_GAS_URL + urlencode_data,
+                                     headers=headers,
+                                     data={"data": urlencode_data},
+                                     timeout=10)
+        if r.status == 200:
+            ret = await r.read()
+            _LOGGER.warning("gas ret:%s", ret)
+            result = json.loads(ret)
+            encrypt_response = result[0]['data']
+            decrypt_data = self.des_dec(encrypt_response)
+            _LOGGER.warning("gas ret decrypt_data:%s", decrypt_data)
+            data_arr = decrypt_data.split(',')
+            if data_arr[0] == '0001':
+                mon_bills = []
+                for i in range(2, len(data_arr), 1):
+                    str_arr = data_arr[i].split('|')
+                    if len(str_arr) != 4:
+                        continue
+                    mon_bills.append({"mon": str_arr[1], "regQty": str_arr[2]})
+                self._info[user_code]["monthly_bills"] = mon_bills
+            else:
+                raise InvalidData(f"async_get_mon response decrypt_data = {decrypt_data}")
+        else:
+            raise InvalidData(f"async_get_mon response status_code = {r.status}")
+
+    async def async_get_week(self, user_code):
+        headers = self.common_headers()
+
+        original_data = self.data_concat(REQ_WEK)
+        _LOGGER.warning("original_data:%s", original_data)
+        encrypt_data = self.des_enc(original_data)
+        _LOGGER.warning("encrypt_data:%s", encrypt_data)
+        tocken = sm3(encrypt_data).lower()
+        _LOGGER.warning("tocken:%s", tocken)
+        headers["Tocken"] = tocken
+
+        urlencode_data = quote(encrypt_data)
+        _LOGGER.warning("urlencode_data:%s", urlencode_data)
+        r = await self._session.post(WXMP_GAS_URL + urlencode_data,
+                                     headers=headers,
+                                     data={"data": urlencode_data},
+                                     timeout=10)
+        if r.status == 200:
+            ret = await r.read()
+            _LOGGER.warning("gas ret:%s", ret)
+            result = json.loads(ret)
+            encrypt_response = result[0]['data']
+            decrypt_data = self.des_dec(encrypt_response)
+            _LOGGER.warning("gas ret decrypt_data:%s", decrypt_data)
+            data_arr = decrypt_data.split(',')
+            if data_arr[0] == '0001':
+                day_bills = []
+                for i in range(2, len(data_arr), 1):
+                    str_arr = data_arr[i].split('|')
+                    if len(str_arr) != 5:
+                        # print(str_arr)
+                        continue
+                    day_bills.append({"day": str_arr[1], "regQty": str_arr[2]})
+                self._info[user_code]["daily_bills"] = day_bills
+            else:
+                raise InvalidData(f"async_get_week response decrypt_data = {decrypt_data}")
         else:
             raise InvalidData(f"async_get_week response status_code = {r.status}")
 
@@ -109,6 +188,8 @@ class GASData:
         self._info = {self._user_code: {}}
         tasks = [
             self.async_get_info(self._user_code),
+            self.async_get_mon(self._user_code),
+            self.async_get_week(self._user_code),
         ]
         await asyncio.wait(tasks)
         _LOGGER.debug(f"Data {self._info}")
